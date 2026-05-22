@@ -86,7 +86,7 @@ fn move_camera(
 struct SolidBody;
 
 fn collision(
-    bodies: Query<(Entity, &GlobalTransform, &mut Velocity, &Mass, &Aabb)>,
+    bodies: Query<(Entity, &GlobalTransform, &mut Velocity, &Mass)>,
     solids: Query<(Entity, &GlobalTransform, &Aabb), With<SolidBody>>,
 ) {
     for (body, body_t, body_v, body_m, body_bb) in bodies {
