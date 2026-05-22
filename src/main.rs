@@ -42,27 +42,38 @@ fn control_player(
     let (mut player, mut velocity, transform) = player.into_inner();
     let (camera, camera_transform) = camera.into_inner();
 
-    let Some(world_position) = window
+    let Some((cursor_world, cursor)) = window
         .cursor_position()
-        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok())
-        .map(|ray| ray.origin.xy())
+        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok().map(|ray| (ray, cursor)))
+        .map(|(ray, cursor)| (ray.origin.xy(), cursor))
     else {
         return;
     };
 
-    if buttons.pressed(MouseButton::Left) {
-        if let Some(hold) = player.hold {
-            let difference = hold - world_position;
-            let pos = transform.translation.xy();
-            gizmos.line_2d(pos, pos - difference, BLUE);
-        } else {
-            player.hold = Some(world_position);
+    let button_pressed = buttons.pressed(MouseButton::Left); 
+
+    if let Some(hold_cursor) = player.hold {
+        let Ok(hold_world) = camera.viewport_to_world_2d(camera_transform, hold_cursor) else {
+            return
+        };
+
+        let world_difference = hold_world - cursor_world;
+        let player_position = transform.translation.xy();
+        gizmos.line_2d(player_position, player_position - world_difference, BLUE);
+
+        if !button_pressed {
+            let cursor_difference = {
+                let d = hold_cursor - cursor;
+                vec2(d.x, -d.y)
+            };
+
+            velocity.0 += cursor_difference * 0.05;
+
+            player.hold = None;
         }
     } else {
-        if let Some(hold) = player.hold.take() {
-            let difference = hold - world_position;
-
-            velocity.0 += difference * 2.0;
+        if button_pressed {
+            player.hold = Some(cursor);
         }
     }
 }
@@ -156,7 +167,7 @@ fn friction(time: Res<Time>, q: Query<(&mut Velocity, &Mass, &FrictionCoefficien
     for (mut velocity, Mass(mass), FrictionCoefficient(friction_coefficient)) in q {
         let normal_force = mass * GRAVITY_ACC;
         let friction_force = normal_force * friction_coefficient;
-        let friction_deceleration = (friction_force / mass);
+        let friction_deceleration = friction_force / mass;
 
         let dir = velocity.0.normalize();
 
