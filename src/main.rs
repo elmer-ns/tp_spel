@@ -1,11 +1,5 @@
 use bevy::{
-    color::palettes::css::{BLACK, BLUE, WHITE},
-    post_process::bloom::Bloom,
-    prelude::*,
-    render::render_resource::AsBindGroup,
-    shader::ShaderRef,
-    sprite_render::{Material2d, Material2dPlugin},
-    window::PrimaryWindow,
+    camera::primitives::Aabb, color::palettes::css::{BLACK, BLUE, WHITE}, post_process::bloom::Bloom, prelude::*, render::render_resource::AsBindGroup, shader::ShaderRef, sprite_render::{Material2d, Material2dPlugin}, window::PrimaryWindow
 };
 
 fn main() {
@@ -68,6 +62,7 @@ fn control_player(
             };
 
             velocity.0 += cursor_difference * 0.05;
+            velocity.0 = velocity.0.normalize() * velocity.0.length().min(10.0);
 
             player.hold = None;
         }
@@ -85,6 +80,25 @@ fn move_camera(
     let d = player.translation - camera.translation;
 
     camera.translation += d * 0.25;
+}
+
+#[derive(Component)]
+struct SolidBody;
+
+fn collision(
+    bodies: Query<(Entity, &GlobalTransform, &mut Velocity, &Mass, &Aabb)>,
+    solids: Query<(Entity, &GlobalTransform, &Aabb), With<SolidBody>>,
+) {
+    for (body, body_t, body_v, body_m, body_bb) in bodies {
+        for (solid, solid_t, solid_bb) in solids {
+            if body == solid {
+                // skip checking for collision between self
+                continue
+            }
+
+            
+        }
+    }
 }
 
 #[derive(Component)]
@@ -127,7 +141,7 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, 1.0),
         Velocity(vec2(1.0, 1.0)),
         Mass(0.045),
-        FrictionCoefficient(0.25),
+        FrictionCoefficient(0.5),
         Mesh2d(circle),
         MeshMaterial2d(materials.add(Color::Srgba(Srgba::RED))),
     ));
