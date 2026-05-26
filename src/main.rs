@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bevy::{
     camera::primitives::Aabb, color::palettes::css::{BLACK, BLUE, WHITE}, post_process::bloom::Bloom, prelude::*, render::render_resource::AsBindGroup, shader::ShaderRef, sprite_render::{Material2d, Material2dPlugin}, window::PrimaryWindow
 };
@@ -11,7 +13,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (control_player, move_camera, update_positions, friction),
+            (control_player, move_camera, collision, update_positions, friction),
         )
         .run();
 }
@@ -86,17 +88,36 @@ fn move_camera(
 struct SolidBody;
 
 fn collision(
-    bodies: Query<(Entity, &GlobalTransform, &mut Velocity, &Mass)>,
-    solids: Query<(Entity, &GlobalTransform, &Aabb), With<SolidBody>>,
+    mut commands: Commands,
+    time: Res<Time>,
+    bodies: Query<(Entity, &GlobalTransform, &mut Velocity, &Mass, &Aabb), Without<SolidBody>>,
+    solids: Query<(Entity, &GlobalTransform, Option<&Velocity>, &Aabb), With<SolidBody>>,
 ) {
-    for (body, body_t, body_v, body_m, body_bb) in bodies {
-        for (solid, solid_t, solid_bb) in solids {
-            if body == solid {
-                // skip checking for collision between self
-                continue
+    for (body, body_t, body_v, _body_m, body_bb) in bodies {
+        for (solid, solid_t, solid_v, solid_bb) in solids {
+            let dt = time.delta_secs();
+
+            let b_move = body_v.0 * dt;
+            let b_min = body_bb.min().xy() + solid_t.translation().xy() + b_move;
+            let b_max = body_bb.max().xy() + solid_t.translation().xy() + b_move;
+
+            let s_move = solid_v.map(|v| v.0).unwrap_or(Vec2::ZERO) * dt;
+            let s_min = solid_bb.min().xy() + solid_t.translation().xy() + s_move;
+            let s_max = solid_bb.max().xy() + solid_t.translation().xy() + s_move;
+
+            let collision_x = b_min.x <= s_max.x && b_max.x >= s_min.x;
+            let collision_y = b_min.y <= s_max.y && b_max.y >= s_min.y;
+
+            let mut body = commands.entity(body);
+        
+            if collision_x && collision_y {
+                body.insert(Velocity(vec2(-body_v.0.x, -body_v.0.y)));
+            } else if collision_x {
+                body.insert(Velocity(vec2(-body_v.0.x, body_v.0.y)));
+            } else if collision_y {
+                body.insert(Velocity(vec2(body_v.0.x, -body_v.0.y)));
             }
 
-            
         }
     }
 }
@@ -135,6 +156,14 @@ fn setup(
     mut checkered_materials: ResMut<Assets<CheckeredMaterial>>,
 ) {
     let circle = meshes.add(Circle::new(0.05));
+
+    // commands.spawn((
+    //     SolidBody, 
+    //     Aabb::from_min_max(vec3(-10.0, -10.0, 0.0), vec3(10.0, 10.0, 0.0)),
+    //     Transform::from_xyz(100.0, 0.0, 0.0),
+    //     Mesh2d(meshes.add(Rectangle::from_corners(vec2(-10.0, -10.0), vec2(10.0, 10.0)))),
+    //     MeshMaterial2d(materials.add(Color::Srgba(Srgba::BLUE))),
+    // ));
 
     commands.spawn((
         Player { hold: None },
