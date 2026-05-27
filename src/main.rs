@@ -13,7 +13,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (control_player, move_camera, collision, update_positions, friction),
+            (control_player, move_camera, update_positions, player_collision, friction),
         )
         .run();
 }
@@ -37,6 +37,8 @@ fn control_player(
 ) {
     let (mut player, mut velocity, transform) = player.into_inner();
     let (camera, camera_transform) = camera.into_inner();
+
+    //println!("{:?}", transform);
 
     let Some((cursor_world, cursor)) = window
         .cursor_position()
@@ -87,42 +89,41 @@ fn move_camera(
 #[derive(Component)]
 struct SolidBody;
 
-fn collision(
-    mut commands: Commands,
+fn player_collision(
     time: Res<Time>,
-    bodies: Query<(Entity, &GlobalTransform, &mut Velocity, &Mass, &Aabb), Without<SolidBody>>,
-    solids: Query<(Entity, &GlobalTransform, Option<&Velocity>, &Aabb), With<SolidBody>>,
+    player: Single<(&Transform, &mut Velocity, &Aabb), With<Player>>,
+    solids: Query<(&Transform, Option<&Velocity>, &Aabb), (With<SolidBody>, Without<Player>)>,
 ) {
-    for (body, body_t, body_v, _body_m, body_bb) in bodies {
-        for (solid, solid_t, solid_v, solid_bb) in solids {
-            let dt = time.delta_secs();
+    let dt = time.delta_secs();
 
-            let b_move = body_v.0 * dt;
-            let b_min = body_bb.min().xy() + solid_t.translation().xy() + b_move;
-            let b_max = body_bb.max().xy() + solid_t.translation().xy() + b_move;
+    let (p_tranform, mut p_velocity, p_aabb) = player.into_inner();
+    for (s_transform, s_velocity, s_aabb) in solids {
+        // player position and velocity relative to solid body
+        let relative_position = p_tranform.translation.xy() - s_transform.translation.xy();
+        let relative_velocity = p_velocity.0 - s_velocity.cloned().unwrap_or_default().0;
+        let relative_move = relative_velocity * dt;
 
-            let s_move = solid_v.map(|v| v.0).unwrap_or(Vec2::ZERO) * dt;
-            let s_min = solid_bb.min().xy() + solid_t.translation().xy() + s_move;
-            let s_max = solid_bb.max().xy() + solid_t.translation().xy() + s_move;
+        println!("Relative Position: {:?},\nRelative Velocity: {:?},\nRelative Move: {:?},", relative_position, relative_velocity, relative_move);
 
-            let collision_x = b_min.x <= s_max.x && b_max.x >= s_min.x;
-            let collision_y = b_min.y <= s_max.y && b_max.y >= s_min.y;
+        let relative_position_pre_move = relative_position - relative_move;
 
-            let mut body = commands.entity(body);
+        fn check_collision(a: &Aabb, b: &Aabb, a_translation: &Vec3) -> bool {
+            (a.min().x + a_translation.x <= b.max().x && a.max().x + a_translation.x >= b.min().x) && (a.min().y + a_translation.y <= b.max().y && a.max().y + a_translation.y >= b.min().y)
+        }
+
+        let x_collision = check_collision(p_aabb, s_aabb, &vec3(relative_position.x, relative_position_pre_move.y,0.0));
+        let y_collision = check_collision(p_aabb, s_aabb, &vec3(relative_position_pre_move.x, relative_position.y,0.0));
         
-            if collision_x && collision_y {
-                body.insert(Velocity(vec2(-body_v.0.x, -body_v.0.y)));
-            } else if collision_x {
-                body.insert(Velocity(vec2(-body_v.0.x, body_v.0.y)));
-            } else if collision_y {
-                body.insert(Velocity(vec2(body_v.0.x, -body_v.0.y)));
-            }
-
+        if x_collision {
+             p_velocity.0.x *= -0.5;
+        }
+        if y_collision {
+            p_velocity.0.y *= -0.5;
         }
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Default, Clone, Copy)]
 struct Velocity(pub Vec2);
 
 #[derive(Component)]
@@ -155,22 +156,25 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut checkered_materials: ResMut<Assets<CheckeredMaterial>>,
 ) {
-    let circle = meshes.add(Circle::new(0.05));
+    const PLAYER_RADIUS: f32 = 0.05;
 
-    // commands.spawn((
-    //     SolidBody, 
-    //     Aabb::from_min_max(vec3(-10.0, -10.0, 0.0), vec3(10.0, 10.0, 0.0)),
-    //     Transform::from_xyz(100.0, 0.0, 0.0),
-    //     Mesh2d(meshes.add(Rectangle::from_corners(vec2(-10.0, -10.0), vec2(10.0, 10.0)))),
-    //     MeshMaterial2d(materials.add(Color::Srgba(Srgba::BLUE))),
-    // ));
+    let circle = meshes.add(Circle::new(PLAYER_RADIUS));
+
+    commands.spawn((
+        SolidBody, 
+        Aabb::from_min_max(vec3(-1.0, -1.0, 1.0), vec3(1.0, 1.0, 1.0)),
+        Transform::from_xyz(1.0, 3.0, 1.0),
+        Mesh2d(meshes.add(Rectangle::from_size(vec2(2.0, 2.0)))),
+        MeshMaterial2d(materials.add(Color::Srgba(Srgba::BLUE))),
+    ));
 
     commands.spawn((
         Player { hold: None },
         Transform::from_xyz(0.0, 0.0, 1.0),
-        Velocity(vec2(1.0, 1.0)),
+        Velocity(vec2(0.0, 0.0)),
         Mass(0.045),
         FrictionCoefficient(0.5),
+        Aabb::from_min_max(vec3(-PLAYER_RADIUS/2.0, -PLAYER_RADIUS/2.0, 1.0), vec3(PLAYER_RADIUS/2.0, PLAYER_RADIUS/2.0, 1.0)),
         Mesh2d(circle),
         MeshMaterial2d(materials.add(Color::Srgba(Srgba::RED))),
     ));
@@ -212,7 +216,7 @@ fn friction(time: Res<Time>, q: Query<(&mut Velocity, &Mass, &FrictionCoefficien
         let friction_force = normal_force * friction_coefficient;
         let friction_deceleration = friction_force / mass;
 
-        let dir = velocity.0.normalize();
+        let dir = velocity.0.normalize_or_zero();
 
         let acceleration = -friction_deceleration * dir; // m/s²
 
