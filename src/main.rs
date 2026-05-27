@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bevy::{
     camera::primitives::Aabb, color::palettes::css::{BLACK, BLUE, WHITE}, post_process::bloom::Bloom, prelude::*, render::render_resource::AsBindGroup, shader::ShaderRef, sprite_render::{Material2d, Material2dPlugin}, window::PrimaryWindow
 };
@@ -89,21 +87,24 @@ fn move_camera(
 #[derive(Component)]
 struct SolidBody;
 
+#[derive(Component, Clone, Copy)]
+struct Bounciness(pub f32);
+
 fn player_collision(
     time: Res<Time>,
-    player: Single<(&Transform, &mut Velocity, &Aabb), With<Player>>,
-    solids: Query<(&Transform, Option<&Velocity>, &Aabb), (With<SolidBody>, Without<Player>)>,
+    player: Single<(&mut Transform, &mut Velocity, Option<&Bounciness>, &Aabb), With<Player>>,
+    solids: Query<(&Transform, Option<&Velocity>, Option<&Bounciness>, &Aabb), (With<SolidBody>, Without<Player>)>,
 ) {
     let dt = time.delta_secs();
 
-    let (p_tranform, mut p_velocity, p_aabb) = player.into_inner();
-    for (s_transform, s_velocity, s_aabb) in solids {
+    let (mut p_transform, mut p_velocity, p_bounciness , p_aabb) = player.into_inner();
+    for (s_transform, s_velocity, s_bounciness , s_aabb) in solids {
         // player position and velocity relative to solid body
-        let relative_position = p_tranform.translation.xy() - s_transform.translation.xy();
+        let relative_position = p_transform.translation.xy() - s_transform.translation.xy();
         let relative_velocity = p_velocity.0 - s_velocity.cloned().unwrap_or_default().0;
         let relative_move = relative_velocity * dt;
 
-        println!("Relative Position: {:?},\nRelative Velocity: {:?},\nRelative Move: {:?},", relative_position, relative_velocity, relative_move);
+        //println!("Relative Position: {:?},\nRelative Velocity: {:?},\nRelative Move: {:?},", relative_position, relative_velocity, relative_move);
 
         let relative_position_pre_move = relative_position - relative_move;
 
@@ -114,11 +115,25 @@ fn player_collision(
         let x_collision = check_collision(p_aabb, s_aabb, &vec3(relative_position.x, relative_position_pre_move.y,0.0));
         let y_collision = check_collision(p_aabb, s_aabb, &vec3(relative_position_pre_move.x, relative_position.y,0.0));
         
-        if x_collision {
-             p_velocity.0.x *= -0.5;
+        let bounciness = p_bounciness.unwrap_or(&Bounciness(1.0)).0 * s_bounciness.unwrap_or(&Bounciness(1.0)).0;
+
+        if x_collision {   
+            p_velocity.0.x *= -bounciness;
+
+            if relative_position.x <= s_aabb.center.x {
+                p_transform.translation.x = s_transform.translation.x + s_aabb.min().x - p_aabb.max().x;
+            } else {
+                p_transform.translation.x = s_transform.translation.x + s_aabb.max().x - p_aabb.min().x;
+            }
         }
         if y_collision {
-            p_velocity.0.y *= -0.5;
+             p_velocity.0.y *= -bounciness;
+
+            if relative_position.y <= s_aabb.center.y {
+                p_transform.translation.y = s_transform.translation.y + s_aabb.min().y - p_aabb.max().y;
+            } else {
+                p_transform.translation.y = s_transform.translation.y + s_aabb.max().y - p_aabb.min().y;
+            }
         }
     }
 }
@@ -165,6 +180,16 @@ fn setup(
         Aabb::from_min_max(vec3(-1.0, -1.0, 1.0), vec3(1.0, 1.0, 1.0)),
         Transform::from_xyz(1.0, 3.0, 1.0),
         Mesh2d(meshes.add(Rectangle::from_size(vec2(2.0, 2.0)))),
+        Bounciness(0.75),
+        MeshMaterial2d(materials.add(Color::Srgba(Srgba::BLUE))),
+    ));
+
+    commands.spawn((
+        SolidBody, 
+        Aabb::from_min_max(vec3(-1.0, -1.0, 1.0), vec3(1.0, 1.0, 1.0)),
+        Transform::from_xyz(4.0, 3.0, 1.0),
+        Mesh2d(meshes.add(Rectangle::from_size(vec2(2.0, 2.0)))),
+        Bounciness(0.5),
         MeshMaterial2d(materials.add(Color::Srgba(Srgba::BLUE))),
     ));
 
@@ -221,5 +246,9 @@ fn friction(time: Res<Time>, q: Query<(&mut Velocity, &Mass, &FrictionCoefficien
         let acceleration = -friction_deceleration * dir; // m/s²
 
         velocity.0 += acceleration * dt;
+
+        if velocity.0.length() < 0.05 {
+            velocity.0 = Vec2::ZERO;
+        }
     }
 }
