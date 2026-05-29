@@ -18,7 +18,6 @@ fn main() {
             Update,
             (control_player, update_positions, player_collision, friction),
         )
-        .init_state::<CameraState>()
         .run();
 }
 

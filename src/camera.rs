@@ -6,7 +6,7 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<CameraState>();
+        app.insert_state(CameraState::Follow { lock: false });
         app.add_systems(Update, (
             camera_follow.run_if(in_state(CameraState::Follow).or(in_state(CameraState::MoveBack))),
             free_camera.run_if(in_state(CameraState::Free)),
@@ -18,13 +18,12 @@ impl Plugin for CameraPlugin {
 #[require(Camera2d)]
 pub struct MainCamera;
 
-#[derive(States, Debug, Hash, PartialEq, Eq, Clone, Copy, Default)]
+#[derive(States, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum CameraState {
-    #[default]
-    /// Move towards (follow) the player, changing to [Self::Follow] once the player is within view
-    MoveBack,
-    /// Move towards (follow) the player, making sure to keep the player in view
-    Follow,
+    /// Move towards (follow) the player
+    Follow {
+        lock: bool,
+    },
     Free,
 }
 
@@ -61,6 +60,8 @@ fn camera_follow(
     let max = player_pos + half_proj_size;
 
     let clamped_pos = player_pos.max(min).min(max);
+
+    let locked = 
 
     if *state == CameraState::Follow {
         let player_pos = player.translation.xy();
