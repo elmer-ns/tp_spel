@@ -2,17 +2,23 @@ use bevy::{
     camera::primitives::Aabb, color::palettes::css::{BLACK, BLUE, WHITE}, post_process::bloom::Bloom, prelude::*, render::render_resource::AsBindGroup, shader::ShaderRef, sprite_render::{Material2d, Material2dPlugin}, window::PrimaryWindow
 };
 
+use crate::camera::{CameraPlugin, CameraState, MainCamera};
+
+mod camera;
+
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
             Material2dPlugin::<CheckeredMaterial>::default(),
+            CameraPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (control_player, move_camera, update_positions, player_collision, friction),
+            (control_player, update_positions, player_collision, friction),
         )
+        .init_state::<CameraState>()
         .run();
 }
 
@@ -22,9 +28,6 @@ const GRAVITY_ACC: f32 = 9.81; // m/s²
 struct Player {
     hold: Option<Vec2>,
 }
-
-#[derive(Component)]
-struct MainCamera;
 
 fn control_player(
     player: Single<(&mut Player, &mut Velocity, &Transform)>,
@@ -73,15 +76,6 @@ fn control_player(
             player.hold = Some(cursor);
         }
     }
-}
-
-fn move_camera(
-    mut camera: Single<&mut Transform, With<MainCamera>>,
-    player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
-) {
-    let d = player.translation - camera.translation;
-
-    camera.translation += d * 0.25;
 }
 
 #[derive(Component)]
@@ -208,7 +202,6 @@ fn setup(
     proj.scale = 0.005;
     commands.spawn((
         MainCamera,
-        Camera2d,
         Projection::Orthographic(proj),
         Bloom::default(),
     ));
