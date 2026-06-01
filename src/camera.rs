@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{color::palettes::css::ORANGE, prelude::*};
 
 use crate::Player;
 
@@ -7,10 +7,16 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(CameraState::Follow { lock: false });
-        app.add_systems(Update, (
-            camera_follow.run_if(in_state(CameraState::Follow).or(in_state(CameraState::MoveBack))),
-            free_camera.run_if(in_state(CameraState::Free)),
-        ));
+        app.add_systems(
+            PostUpdate,
+            (
+                camera_follow.run_if(
+                    in_state(CameraState::Follow { lock: false })
+                        .or(in_state(CameraState::Follow { lock: true })),
+                ),
+                free_camera.run_if(in_state(CameraState::Free)),
+            ),
+        );
     }
 }
 
@@ -33,6 +39,7 @@ fn camera_follow(
     camera: Single<(&Camera, &Projection, &mut Transform), With<MainCamera>>,
     player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
     keys: Res<ButtonInput<KeyCode>>,
+    mut gizmos: Gizmos,
 ) {
     let left = keys.pressed(KeyCode::KeyA);
     let right = keys.pressed(KeyCode::KeyD);
@@ -46,30 +53,53 @@ fn camera_follow(
 
     let (_camera, Projection::Orthographic(proj), mut transform) = camera.into_inner() else {
         error!("Camera has wrong projection. Should be Orthographic");
-        return
+        return;
     };
 
     let d = player.translation - transform.translation;
 
-    transform.translation += d * 0.25;
+    transform.translation += d * 0.1;
 
     let player_pos = player.translation.xy();
-    let half_proj_size = proj.area.size() / 2.0;
+    let half_proj_size = proj.area.size() * 0.5;
 
-    let min = player_pos - half_proj_size;
-    let max = player_pos + half_proj_size;
+    const MARGIN_FACTOR: f32 = 0.5;
 
-    let clamped_pos = player_pos.max(min).min(max);
+    let min = player_pos - half_proj_size * MARGIN_FACTOR;
+    let max = player_pos + half_proj_size * MARGIN_FACTOR;
 
-    let locked = 
+    gizmos.rect_2d(
+        Isometry2d::from_translation(player_pos),
+        half_proj_size * MARGIN_FACTOR * 2.0,
+        Srgba::GREEN,
+    );
 
-    if *state == CameraState::Follow {
-        let player_pos = player.translation.xy();
+    gizmos.circle_2d(Isometry2d::from_translation(min), 0.1, ORANGE);
 
+    gizmos.circle_2d(Isometry2d::from_translation(max), 0.1, ORANGE);
+
+    let pos = transform.translation.xy();
+
+    let clamped_pos = pos.max(min).min(max);
+
+    let CameraState::Follow { lock } = **state else {
+        unreachable!()
+    };
+
+    println!(
+        "lock={},\n
+        pos={},\n
+        min={},\n
+        max={},\n
+        clamped_pos={}",
+        lock, pos, min, max, clamped_pos
+    );
+
+    if lock {
         transform.translation.x = clamped_pos.x;
         transform.translation.y = clamped_pos.y;
-    } else if *state == CameraState::MoveBack && clamped_pos == player_pos {
-        next_state.set(CameraState::Follow);
+    } else if (clamped_pos - transform.translation.xy()).length_squared() < 0.01 {
+        next_state.set(CameraState::Follow { lock: true });
     }
 }
 
@@ -84,16 +114,16 @@ fn free_camera(
     let down = keys.pressed(KeyCode::KeyS);
 
     if keys.pressed(KeyCode::KeyR) {
-        next_state.set(CameraState::MoveBack);
-        return
+        next_state.set(CameraState::Follow { lock: false });
+        return;
     }
 
-    const SPEED: f32 = 1.0;
+    const SPEED: f32 = 0.25;
 
     let x = (right as i32 - left as i32) as f32 * SPEED;
-    let y = (down as i32 - up as i32) as f32 * SPEED;
+    let y = (up as i32 - down as i32) as f32 * SPEED;
 
     let mut transform = camera;
 
-    transform.translation += vec3(x,y,0.0);
+    transform.translation += vec3(x, y, 0.0);
 }

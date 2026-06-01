@@ -1,5 +1,12 @@
 use bevy::{
-    camera::primitives::Aabb, color::palettes::css::{BLACK, BLUE, WHITE}, post_process::bloom::Bloom, prelude::*, render::render_resource::AsBindGroup, shader::ShaderRef, sprite_render::{Material2d, Material2dPlugin}, window::PrimaryWindow
+    camera::primitives::Aabb,
+    color::palettes::css::{BLACK, BLUE, WHITE},
+    post_process::bloom::Bloom,
+    prelude::*,
+    render::render_resource::AsBindGroup,
+    shader::ShaderRef,
+    sprite_render::{Material2d, Material2dPlugin},
+    window::PrimaryWindow,
 };
 
 use crate::camera::{CameraPlugin, CameraState, MainCamera};
@@ -42,17 +49,22 @@ fn control_player(
 
     let Some((cursor_world, cursor)) = window
         .cursor_position()
-        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok().map(|ray| (ray, cursor)))
+        .and_then(|cursor| {
+            camera
+                .viewport_to_world(camera_transform, cursor)
+                .ok()
+                .map(|ray| (ray, cursor))
+        })
         .map(|(ray, cursor)| (ray.origin.xy(), cursor))
     else {
         return;
     };
 
-    let button_pressed = buttons.pressed(MouseButton::Left); 
+    let button_pressed = buttons.pressed(MouseButton::Left);
 
     if let Some(hold_cursor) = player.hold {
         let Ok(hold_world) = camera.viewport_to_world_2d(camera_transform, hold_cursor) else {
-            return
+            return;
         };
 
         let world_difference = hold_world - cursor_world;
@@ -66,7 +78,7 @@ fn control_player(
             };
 
             velocity.0 += cursor_difference * 0.05;
-            velocity.0 = velocity.0.normalize() * velocity.0.length().min(10.0);
+            velocity.0 = velocity.0.normalize() * velocity.0.length(); //.min(10.0);
 
             player.hold = None;
         }
@@ -86,12 +98,15 @@ struct Bounciness(pub f32);
 fn player_collision(
     time: Res<Time>,
     player: Single<(&mut Transform, &mut Velocity, Option<&Bounciness>, &Aabb), With<Player>>,
-    solids: Query<(&Transform, Option<&Velocity>, Option<&Bounciness>, &Aabb), (With<SolidBody>, Without<Player>)>,
+    solids: Query<
+        (&Transform, Option<&Velocity>, Option<&Bounciness>, &Aabb),
+        (With<SolidBody>, Without<Player>),
+    >,
 ) {
     let dt = time.delta_secs();
 
-    let (mut p_transform, mut p_velocity, p_bounciness , p_aabb) = player.into_inner();
-    for (s_transform, s_velocity, s_bounciness , s_aabb) in solids {
+    let (mut p_transform, mut p_velocity, p_bounciness, p_aabb) = player.into_inner();
+    for (s_transform, s_velocity, s_bounciness, s_aabb) in solids {
         // player position and velocity relative to solid body
         let relative_position = p_transform.translation.xy() - s_transform.translation.xy();
         let relative_velocity = p_velocity.0 - s_velocity.cloned().unwrap_or_default().0;
@@ -102,30 +117,45 @@ fn player_collision(
         let relative_position_pre_move = relative_position - relative_move;
 
         fn check_collision(a: &Aabb, b: &Aabb, a_translation: &Vec3) -> bool {
-            (a.min().x + a_translation.x <= b.max().x && a.max().x + a_translation.x >= b.min().x) && (a.min().y + a_translation.y <= b.max().y && a.max().y + a_translation.y >= b.min().y)
+            (a.min().x + a_translation.x <= b.max().x && a.max().x + a_translation.x >= b.min().x)
+                && (a.min().y + a_translation.y <= b.max().y
+                    && a.max().y + a_translation.y >= b.min().y)
         }
 
-        let x_collision = check_collision(p_aabb, s_aabb, &vec3(relative_position.x, relative_position_pre_move.y,0.0));
-        let y_collision = check_collision(p_aabb, s_aabb, &vec3(relative_position_pre_move.x, relative_position.y,0.0));
-        
-        let bounciness = p_bounciness.unwrap_or(&Bounciness(1.0)).0 * s_bounciness.unwrap_or(&Bounciness(1.0)).0;
+        let x_collision = check_collision(
+            p_aabb,
+            s_aabb,
+            &vec3(relative_position.x, relative_position_pre_move.y, 0.0),
+        );
+        let y_collision = check_collision(
+            p_aabb,
+            s_aabb,
+            &vec3(relative_position_pre_move.x, relative_position.y, 0.0),
+        );
 
-        if x_collision {   
+        let bounciness =
+            p_bounciness.unwrap_or(&Bounciness(1.0)).0 * s_bounciness.unwrap_or(&Bounciness(1.0)).0;
+
+        if x_collision {
             p_velocity.0.x *= -bounciness;
 
             if relative_position.x <= s_aabb.center.x {
-                p_transform.translation.x = s_transform.translation.x + s_aabb.min().x - p_aabb.max().x;
+                p_transform.translation.x =
+                    s_transform.translation.x + s_aabb.min().x - p_aabb.max().x;
             } else {
-                p_transform.translation.x = s_transform.translation.x + s_aabb.max().x - p_aabb.min().x;
+                p_transform.translation.x =
+                    s_transform.translation.x + s_aabb.max().x - p_aabb.min().x;
             }
         }
         if y_collision {
-             p_velocity.0.y *= -bounciness;
+            p_velocity.0.y *= -bounciness;
 
             if relative_position.y <= s_aabb.center.y {
-                p_transform.translation.y = s_transform.translation.y + s_aabb.min().y - p_aabb.max().y;
+                p_transform.translation.y =
+                    s_transform.translation.y + s_aabb.min().y - p_aabb.max().y;
             } else {
-                p_transform.translation.y = s_transform.translation.y + s_aabb.max().y - p_aabb.min().y;
+                p_transform.translation.y =
+                    s_transform.translation.y + s_aabb.max().y - p_aabb.min().y;
             }
         }
     }
@@ -169,7 +199,7 @@ fn setup(
     let circle = meshes.add(Circle::new(PLAYER_RADIUS));
 
     commands.spawn((
-        SolidBody, 
+        SolidBody,
         Aabb::from_min_max(vec3(-1.0, -1.0, 1.0), vec3(1.0, 1.0, 1.0)),
         Transform::from_xyz(1.0, 3.0, 1.0),
         Mesh2d(meshes.add(Rectangle::from_size(vec2(2.0, 2.0)))),
@@ -178,7 +208,7 @@ fn setup(
     ));
 
     commands.spawn((
-        SolidBody, 
+        SolidBody,
         Aabb::from_min_max(vec3(-1.0, -1.0, 1.0), vec3(1.0, 1.0, 1.0)),
         Transform::from_xyz(4.0, 3.0, 1.0),
         Mesh2d(meshes.add(Rectangle::from_size(vec2(2.0, 2.0)))),
@@ -192,18 +222,17 @@ fn setup(
         Velocity(vec2(0.0, 0.0)),
         Mass(0.045),
         FrictionCoefficient(0.5),
-        Aabb::from_min_max(vec3(-PLAYER_RADIUS/2.0, -PLAYER_RADIUS/2.0, 1.0), vec3(PLAYER_RADIUS/2.0, PLAYER_RADIUS/2.0, 1.0)),
+        Aabb::from_min_max(
+            vec3(-PLAYER_RADIUS / 2.0, -PLAYER_RADIUS / 2.0, 1.0),
+            vec3(PLAYER_RADIUS / 2.0, PLAYER_RADIUS / 2.0, 1.0),
+        ),
         Mesh2d(circle),
         MeshMaterial2d(materials.add(Color::Srgba(Srgba::RED))),
     ));
 
     let mut proj = OrthographicProjection::default_2d();
     proj.scale = 0.005;
-    commands.spawn((
-        MainCamera,
-        Projection::Orthographic(proj),
-        Bloom::default(),
-    ));
+    commands.spawn((MainCamera, Projection::Orthographic(proj), Bloom::default()));
 
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::new(2000.0, 2000.0))),
