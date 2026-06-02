@@ -39,7 +39,6 @@ fn camera_follow(
     camera: Single<(&Camera, &Projection, &mut Transform), With<MainCamera>>,
     player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut gizmos: Gizmos,
 ) {
     let left = keys.pressed(KeyCode::KeyA);
     let right = keys.pressed(KeyCode::KeyD);
@@ -63,20 +62,10 @@ fn camera_follow(
     let player_pos = player.translation.xy();
     let half_proj_size = proj.area.size() * 0.5;
 
-    const MARGIN_FACTOR: f32 = 0.5;
+    const MARGIN_FACTOR: f32 = 0.75;
 
     let min = player_pos - half_proj_size * MARGIN_FACTOR;
     let max = player_pos + half_proj_size * MARGIN_FACTOR;
-
-    gizmos.rect_2d(
-        Isometry2d::from_translation(player_pos),
-        half_proj_size * MARGIN_FACTOR * 2.0,
-        Srgba::GREEN,
-    );
-
-    gizmos.circle_2d(Isometry2d::from_translation(min), 0.1, ORANGE);
-
-    gizmos.circle_2d(Isometry2d::from_translation(max), 0.1, ORANGE);
 
     let pos = transform.translation.xy();
 
@@ -85,15 +74,6 @@ fn camera_follow(
     let CameraState::Follow { lock } = **state else {
         unreachable!()
     };
-
-    println!(
-        "lock={},\n
-        pos={},\n
-        min={},\n
-        max={},\n
-        clamped_pos={}",
-        lock, pos, min, max, clamped_pos
-    );
 
     if lock {
         transform.translation.x = clamped_pos.x;
