@@ -9,10 +9,11 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-use crate::{camera::{CameraPlugin, MainCamera}, physics::{Bounciness, FrictionCoefficient, Mass, SolidBody, Velocity, friction, player_collision, update_positions}};
+use crate::{camera::{CameraPlugin, MainCamera}, physics::{Bounciness, FrictionCoefficient, Mass, SolidBody, Velocity, friction, player_collision, update_positions}, player::{Control, Player}};
 
 mod camera;
 mod physics;
+mod player;
 
 fn main() {
     App::new()
@@ -26,16 +27,13 @@ fn main() {
             Update,
             (control_player, update_positions, player_collision, friction),
         )
+        .init_resource::<Control>()
         .run();
-}
-
-#[derive(Component)]
-struct Player {
-    hold: Option<Vec2>,
 }
 
 fn control_player(
     player: Single<(&mut Player, &mut Velocity, &Transform)>,
+    control: Res<Control>,
     buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window, With<PrimaryWindow>>,
     camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
@@ -59,9 +57,7 @@ fn control_player(
         return;
     };
 
-    let button_pressed = buttons.pressed(MouseButton::Left);
-
-    if let Some(hold_cursor) = player.hold {
+    if let Some(hold_cursor) = control.hold {
         let Ok(hold_world) = camera.viewport_to_world_2d(camera_transform, hold_cursor) else {
             return;
         };
@@ -78,12 +74,6 @@ fn control_player(
 
             velocity.0 += cursor_difference * 0.05;
             velocity.0 = velocity.0.normalize() * velocity.0.length(); //.min(10.0);
-
-            player.hold = None;
-        }
-    } else {
-        if button_pressed {
-            player.hold = Some(cursor);
         }
     }
 }
@@ -135,7 +125,7 @@ fn setup(
     ));
 
     commands.spawn((
-        Player { hold: None },
+        Player,
         Transform::from_xyz(0.0, 0.0, 1.0),
         Velocity(vec2(0.0, 0.0)),
         Mass(0.045),
@@ -161,4 +151,5 @@ fn setup(
             color_b: BLACK.into(),
         })),
     ));
+
 }
