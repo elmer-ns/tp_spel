@@ -7,6 +7,7 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(CameraState::Follow);
+        app.add_systems(Update, camera_zoom);
         app.add_systems(
             PostUpdate,
             (
@@ -26,6 +27,23 @@ pub enum CameraState {
     /// Move towards (follow) the player
     Follow,
     Free,
+}
+
+fn camera_zoom(control: Res<Control>, camera: Single<&mut Projection, With<MainCamera>>) {
+    let Projection::Orthographic(proj) = camera.into_inner().into_inner() else {
+        unreachable!("projection should be ortographic")
+    };
+
+    const MIN_SCALE: f32 = 0.0001;
+    const MAX_SCALE: f32 = 0.025;
+
+    const ZOOM_SENSITIVITY: f32 = 0.1;
+
+    proj.scale = (proj.scale * (-control.scroll.y * ZOOM_SENSITIVITY).exp())
+        .min(MAX_SCALE)
+        .max(MIN_SCALE);
+
+    println!("{}", proj.scale);
 }
 
 fn camera_follow(
