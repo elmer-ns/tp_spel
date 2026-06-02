@@ -6,7 +6,6 @@ use bevy::{
     render::render_resource::AsBindGroup,
     shader::ShaderRef,
     sprite_render::{Material2d, Material2dPlugin},
-    window::PrimaryWindow,
 };
 
 use crate::{
@@ -40,49 +39,34 @@ fn main() {
 }
 
 fn control_player(
-    player: Single<(&mut Player, &mut Velocity, &Transform)>,
+    player: Single<(&mut Velocity, &Transform), With<Player>>,
     control: Res<Control>,
-    buttons: Res<ButtonInput<MouseButton>>,
-    window: Single<&Window, With<PrimaryWindow>>,
     camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut gizmos: Gizmos,
 ) {
-    let (mut player, mut velocity, transform) = player.into_inner();
+    let (mut player_velocity, player_transform) = player.into_inner();
     let (camera, camera_transform) = camera.into_inner();
 
     //println!("{:?}", transform);
-
-    let Some((cursor_world, cursor)) = window
-        .cursor_position()
-        .and_then(|cursor| {
-            camera
-                .viewport_to_world(camera_transform, cursor)
-                .ok()
-                .map(|ray| (ray, cursor))
-        })
-        .map(|(ray, cursor)| (ray.origin.xy(), cursor))
-    else {
-        return;
-    };
 
     if let Some(hold) = control.hold {
         let Ok(hold_world) = camera.viewport_to_world_2d(camera_transform, hold) else {
             return;
         };
 
-        let world_difference = hold_world - cursor_world;
-        let player_position = transform.translation.xy();
+        let world_difference = hold_world - control.cursor_world;
+        let player_position = player_transform.translation.xy();
         gizmos.line_2d(player_position, player_position - world_difference, BLUE);
     }
 
     if let Some(drop_from) = control.drop_from {
         let cursor_difference = {
-            let d = drop_from - cursor;
+            let d = drop_from - control.cursor;
             vec2(d.x, -d.y)
         };
 
-        velocity.0 += cursor_difference * 0.05;
-        velocity.0 = velocity.0.normalize() * velocity.0.length(); //.min(10.0);
+        player_velocity.0 += cursor_difference * 0.05;
+        player_velocity.0 = player_velocity.0.normalize() * player_velocity.0.length(); //.min(10.0);
     }
 }
 

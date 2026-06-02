@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::Player;
+use crate::{Player, player::Control};
 
 pub struct CameraPlugin;
 
@@ -38,14 +38,9 @@ fn camera_follow(
     mut next_state: ResMut<NextState<CameraState>>,
     camera: Single<(&Camera, &Projection, &mut Transform), With<MainCamera>>,
     player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
-    keys: Res<ButtonInput<KeyCode>>,
+    control: Res<Control>,
 ) {
-    let left = keys.pressed(KeyCode::KeyA);
-    let right = keys.pressed(KeyCode::KeyD);
-    let up = keys.pressed(KeyCode::KeyW);
-    let down = keys.pressed(KeyCode::KeyS);
-
-    if left || right || up || down {
+    if control.left || control.right || control.up || control.down {
         next_state.set(CameraState::Free);
         return;
     }
@@ -57,7 +52,7 @@ fn camera_follow(
 
     let d = player.translation - transform.translation;
 
-    transform.translation += d * 0.1;
+    transform.translation += d * 0.125;
 
     let player_pos = player.translation.xy();
     let half_proj_size = proj.area.size() * 0.5;
@@ -75,7 +70,7 @@ fn camera_follow(
         unreachable!()
     };
 
-    if lock {
+    if lock && false {
         transform.translation.x = clamped_pos.x;
         transform.translation.y = clamped_pos.y;
     } else if (clamped_pos - transform.translation.xy()).length_squared() < 0.01 {
@@ -86,22 +81,17 @@ fn camera_follow(
 fn free_camera(
     mut next_state: ResMut<NextState<CameraState>>,
     camera: Single<&mut Transform, With<MainCamera>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    control: Res<Control>,
 ) {
-    let left = keys.pressed(KeyCode::KeyA);
-    let right = keys.pressed(KeyCode::KeyD);
-    let up = keys.pressed(KeyCode::KeyW);
-    let down = keys.pressed(KeyCode::KeyS);
-
-    if keys.pressed(KeyCode::KeyR) {
+    if control.camera_return {
         next_state.set(CameraState::Follow { lock: false });
         return;
     }
 
     const SPEED: f32 = 0.125;
 
-    let x = (right as i32 - left as i32) as f32 * SPEED;
-    let y = (up as i32 - down as i32) as f32 * SPEED;
+    let x = (control.right as i32 - control.left as i32) as f32 * SPEED;
+    let y = (control.up as i32 - control.down as i32) as f32 * SPEED;
 
     let mut transform = camera;
 
