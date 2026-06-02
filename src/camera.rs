@@ -1,19 +1,16 @@
 use bevy::prelude::*;
 
-use crate::{Player, player::Control};
+use crate::{Player, physics::Velocity, player::Control};
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(CameraState::Follow { lock: false });
+        app.insert_state(CameraState::Follow);
         app.add_systems(
             PostUpdate,
             (
-                camera_follow.run_if(
-                    in_state(CameraState::Follow { lock: false })
-                        .or(in_state(CameraState::Follow { lock: true })),
-                ),
+                camera_follow.run_if(in_state(CameraState::Follow)),
                 free_camera.run_if(in_state(CameraState::Free)),
             ),
         );
@@ -27,55 +24,40 @@ pub struct MainCamera;
 #[derive(States, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum CameraState {
     /// Move towards (follow) the player
-    Follow {
-        lock: bool,
-    },
+    Follow,
     Free,
 }
 
 fn camera_follow(
-    state: Res<State<CameraState>>,
     mut next_state: ResMut<NextState<CameraState>>,
-    camera: Single<(&Camera, &Projection, &mut Transform), With<MainCamera>>,
-    player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
+    camera: Single<&mut Transform, With<MainCamera>>,
+    player: Single<(&Transform, &Velocity), (With<Player>, Without<MainCamera>)>,
     control: Res<Control>,
+    time: Res<Time>,
 ) {
+    let dt = time.delta_secs();
+
     if control.left || control.right || control.up || control.down {
         next_state.set(CameraState::Free);
         return;
     }
 
-    let (_camera, Projection::Orthographic(proj), mut transform) = camera.into_inner() else {
-        error!("Camera has wrong projection. Should be Orthographic");
-        return;
-    };
+    let mut c_transform = camera.into_inner();
 
-    let d = player.translation - transform.translation;
+    let (p_transform, Velocity(p_velocity)) = player.into_inner();
 
-    transform.translation += d * 0.125;
+    const TIME_CONSTANT: f32 = 0.3;
+    const LOOKAHEAD_TIME: f32 = 0.325;
 
-    let player_pos = player.translation.xy();
-    let half_proj_size = proj.area.size() * 0.5;
+    let lookahead = p_velocity * LOOKAHEAD_TIME;
+    let target = p_transform.translation.xy() + lookahead;
 
-    const MARGIN_FACTOR: f32 = 0.75;
+    let t = 1.0 - (-dt / TIME_CONSTANT).exp();
 
-    let min = player_pos - half_proj_size * MARGIN_FACTOR;
-    let max = player_pos + half_proj_size * MARGIN_FACTOR;
+    let c_move = (target - c_transform.translation.xy()) * t;
 
-    let pos = transform.translation.xy();
-
-    let clamped_pos = pos.max(min).min(max);
-
-    let CameraState::Follow { lock } = **state else {
-        unreachable!()
-    };
-
-    if lock && false {
-        transform.translation.x = clamped_pos.x;
-        transform.translation.y = clamped_pos.y;
-    } else if (clamped_pos - transform.translation.xy()).length_squared() < 0.01 {
-        next_state.set(CameraState::Follow { lock: true });
-    }
+    c_transform.translation.x += c_move.x;
+    c_transform.translation.y += c_move.y;
 }
 
 fn free_camera(
@@ -84,7 +66,7 @@ fn free_camera(
     control: Res<Control>,
 ) {
     if control.camera_return {
-        next_state.set(CameraState::Follow { lock: false });
+        next_state.set(CameraState::Follow);
         return;
     }
 
