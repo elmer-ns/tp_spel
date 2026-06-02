@@ -1,4 +1,4 @@
-use bevy::{color::palettes::css::ORANGE, prelude::*};
+use bevy::prelude::*;
 
 use crate::Player;
 
@@ -98,7 +98,7 @@ fn free_camera(
         return;
     }
 
-    const SPEED: f32 = 0.25;
+    const SPEED: f32 = 0.125;
 
     let x = (right as i32 - left as i32) as f32 * SPEED;
     let y = (up as i32 - down as i32) as f32 * SPEED;
