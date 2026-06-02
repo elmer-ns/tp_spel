@@ -9,7 +9,14 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-use crate::{camera::{CameraPlugin, MainCamera}, physics::{Bounciness, FrictionCoefficient, Mass, SolidBody, Velocity, friction, player_collision, update_positions}, player::{Control, Player}};
+use crate::{
+    camera::{CameraPlugin, MainCamera},
+    physics::{
+        Bounciness, FrictionCoefficient, Mass, SolidBody, Velocity, friction, player_collision,
+        update_positions,
+    },
+    player::{Control, Player, input_system},
+};
 
 mod camera;
 mod physics;
@@ -23,9 +30,10 @@ fn main() {
             CameraPlugin,
         ))
         .add_systems(Startup, setup)
+        .add_systems(PreUpdate, input_system)
         .add_systems(
             Update,
-            (control_player, update_positions, player_collision, friction),
+            (control_player, friction, update_positions, player_collision),
         )
         .init_resource::<Control>()
         .run();
@@ -57,24 +65,24 @@ fn control_player(
         return;
     };
 
-    if let Some(hold_cursor) = control.hold {
-        let Ok(hold_world) = camera.viewport_to_world_2d(camera_transform, hold_cursor) else {
+    if let Some(hold) = control.hold {
+        let Ok(hold_world) = camera.viewport_to_world_2d(camera_transform, hold) else {
             return;
         };
 
         let world_difference = hold_world - cursor_world;
         let player_position = transform.translation.xy();
         gizmos.line_2d(player_position, player_position - world_difference, BLUE);
+    }
 
-        if !button_pressed {
-            let cursor_difference = {
-                let d = hold_cursor - cursor;
-                vec2(d.x, -d.y)
-            };
+    if let Some(drop_from) = control.drop_from {
+        let cursor_difference = {
+            let d = drop_from - cursor;
+            vec2(d.x, -d.y)
+        };
 
-            velocity.0 += cursor_difference * 0.05;
-            velocity.0 = velocity.0.normalize() * velocity.0.length(); //.min(10.0);
-        }
+        velocity.0 += cursor_difference * 0.05;
+        velocity.0 = velocity.0.normalize() * velocity.0.length(); //.min(10.0);
     }
 }
 
@@ -151,5 +159,4 @@ fn setup(
             color_b: BLACK.into(),
         })),
     ));
-
 }

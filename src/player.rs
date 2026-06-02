@@ -15,27 +15,30 @@ pub struct Control {
     pub camera_return: bool,
 
     pub hold: Option<Vec2>,
+    pub drop_from: Option<Vec2>,
+
     pub cursor: Vec2,
     pub cursor_world: Vec2,
 }
 
 impl Default for Control {
     fn default() -> Self {
-        Self { 
-            left: false, 
-            right: false, 
-            up: false, 
-            down: false, 
-            camera_return: false, 
-            hold: None, 
-            cursor: Vec2::ZERO, 
+        Self {
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            camera_return: false,
+            hold: None,
+            drop_from: None,
+            cursor: Vec2::ZERO,
             cursor_world: Vec2::ZERO,
         }
     }
 }
 
-fn input_system(
-    mut control: ResMut<Control>, 
+pub fn input_system(
+    mut control: ResMut<Control>,
     q_camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
     k_buttons: Res<ButtonInput<KeyCode>>,
     m_buttons: Res<ButtonInput<MouseButton>>,
@@ -69,11 +72,13 @@ fn input_system(
     control.cursor = cursor;
     control.cursor_world = cursor_world;
 
+    control.drop_from = None;
+
     if left_m_down {
         if control.hold.is_none() {
             control.hold = Some(cursor)
         }
     } else {
-        control.hold = None;
+        control.drop_from = control.hold.take();
     }
 }
